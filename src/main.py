@@ -69,12 +69,13 @@ configured_os = configure_os()
 
 
 class OptiNotes(configured_os):
-    def __init__(self, output_dir: str, mappings: dict) -> None:
+    def __init__(self, output_dir: str, mappings: dict, threading: bool = False) -> None:
         super().__init__(output_dir)
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
         self.output_dir = output_dir
         self.mappings = mappings
+        self.threading = threading
         self.date_format = "%Y-%m-%d_%H:%M:%S.%f"
         self.last_thread = None
         self.queue = []
@@ -124,8 +125,9 @@ class OptiNotes(configured_os):
             command = self.queue.pop(0)
             if command == "C":
                 name = self._generate_name()
+                capture_method = self.capture_thread if self.threading else self.capture
                 self.last_thread = self.capture_thread(rf"{self.output_dir}/{name}")
-                self.capture_thread(rf"{self.output_dir}/{name}")
+                capture_method(rf"{self.output_dir}/{name}")
                 self.pprint(f"Captured {name}", color="green")
             elif command == "D":
                 if self.last_thread is not None:
@@ -164,6 +166,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "-kd", "--key-delete", type=str, help="Key to delete", default="f4"
     )
+    parser.add_argument(
+        "-t", "--threading", action='store_true', help="Enable threading"
+    )
     args = parser.parse_args()
     mappings = {args.key_capture: "C", args.key_delete: "D"}
-    OptiNotes(args.output, mappings).run()
+    OptiNotes(args.output, mappings, threading=args.threading).run()
