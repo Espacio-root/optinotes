@@ -2,6 +2,7 @@ from subprocess import run as subprocess_run, PIPE as subprocess_PIPE
 from datetime import datetime
 from threading import Thread
 from argparse import ArgumentParser
+from typing import Type
 from PIL import ImageGrab
 import os
 import keyboard
@@ -9,8 +10,8 @@ import re
 
 
 class BaseOS:
-    def __init__(self, output_dir):
-        self.output_dir = output_dir
+    def __init__(self, parser):
+        self.parser = parser
 
     def capture(self, output_file: str) -> None:
         screenshot = ImageGrab.grab()
@@ -21,13 +22,21 @@ class BaseOS:
         thread.start()
         return thread
 
+    def add_arguments(self):
+        pass
+
+    def configure_args(self):
+        self.add_arguments(self.parser)
+        self.args = parser.parse_args()
+        return self.args
+
     def after_script_execution(self) -> None:
         pass
 
 
 class HyprlandLinuxOS(BaseOS):
-    def __init__(self, output_dir):
-        super().__init__(output_dir)
+    def __init__(self, parser):
+        super().__init__(parser)
 
     @staticmethod
     def execute_command(command: str) -> str:
@@ -41,16 +50,22 @@ class HyprlandLinuxOS(BaseOS):
         if result.returncode != 0:
             return result.stderr
         else:
-            return result.stdout
+            raise result.stdout
 
     def get_active_window_geometry(self) -> str:
         command = "hyprctl activewindow | grep -E '([0-9]+),([0-9]+)' | awk '{printf \"%s %s\", $2, $3}' | sed 's/,/x/2'"
         return self.execute_command(command)
 
-    # Takes about 0.37 seconds to run
+    # Takes about 0.37 seconds to run with geometry and 0.003 seconds without geometry
     def capture(self, output_file: str) -> None:
-        geometry = self.get_active_window_geometry()
-        self.execute_command(f'grim -g "{geometry.strip()}" {output_file}')
+        if self.args.geometry:
+            geometry = self.get_active_window_geometry()
+            self.execute_command(f'grim -g "{geometry.strip()}" {output_file}')
+        else:
+            self.execute_command(f'grim {output_file}')
+
+    def add_arguments(self, parser: Type[ArgumentParser]):
+        parser.add_argument('-g', '--geometry', action='store_true', help='enable partial screenshots at the cost of 123x delay')
 
     def after_script_execution(self) -> None:
         username = self.output_dir.split("/")[2]
@@ -69,16 +84,20 @@ configured_os = configure_os()
 
 
 class OptiNotes(configured_os):
-    def __init__(self, output_dir: str, mappings: dict, threading: bool = False) -> None:
-        super().__init__(output_dir)
-        if not os.path.exists(output_dir):
-            os.makedirs(output_dir)
-        self.output_dir = output_dir
-        self.mappings = mappings
-        self.threading = threading
+    def __init__(self, parser) -> None:
+        super().__init__(parser)
+        self._handle_args()
         self.date_format = "%Y-%m-%d_%H:%M:%S.%f"
         self.last_thread = None
         self.queue = []
+
+    def _handle_args(self):
+        args = self.configure_args()
+        if not os.path.exists(args.output):
+            os.makedirs(args.output)
+        self.output_dir = args.output
+        self.mappings = {args.key_capture: "C", args.key_delete: "D"}
+        self.threading = args.threading
 
     @staticmethod
     def pprint(msg: str, color: str = "white", **kwargs) -> None:
@@ -169,6 +188,4 @@ if __name__ == "__main__":
     parser.add_argument(
         "-t", "--threading", action='store_true', help="Enable threading"
     )
-    args = parser.parse_args()
-    mappings = {args.key_capture: "C", args.key_delete: "D"}
-    OptiNotes(args.output, mappings, threading=args.threading).run()
+    OptiNotes(parser).run()
