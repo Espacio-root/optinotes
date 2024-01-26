@@ -50,7 +50,7 @@ class HyprlandLinuxOS(BaseOS):
         if result.returncode != 0:
             return result.stderr
         else:
-            raise result.stdout
+            return result.stdout
 
     def get_active_window_geometry(self) -> str:
         command = "hyprctl activewindow | grep -E '([0-9]+),([0-9]+)' | awk '{printf \"%s %s\", $2, $3}' | sed 's/,/x/2'"
@@ -107,10 +107,10 @@ class OptiNotes(configured_os):
     def _handle_queue(self) -> None:
         res = []
         for i in self.queue:
-            if i != "D" or len(res) == 0:
-                res.append(i)
-            else:
+            if i == "D" and len([i for i in res if i != "D"]) != 0:
                 res.pop()
+            else:
+                res.append(i)
         self.queue = res
 
     def _handle_user_input(self, e) -> None:
